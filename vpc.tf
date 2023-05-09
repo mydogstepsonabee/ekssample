@@ -25,7 +25,7 @@ resource "aws_subnet" "public" {
     "kubernetes.io/role/elb"                       = 1
   }
 
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 }
 
 # Private Subnets
@@ -120,7 +120,7 @@ resource "aws_security_group_rule" "sg_ingress_public_443" {
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
+  cidr_blocks       = ["<cidr>"]
 }
 
 resource "aws_security_group_rule" "sg_ingress_public_80" {
@@ -129,7 +129,7 @@ resource "aws_security_group_rule" "sg_ingress_public_80" {
   from_port         = 80
   to_port           = 80
   protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
+  cidr_blocks       = ["<cidr>"]
 }
 
 resource "aws_security_group_rule" "sg_egress_public" {
@@ -210,4 +210,67 @@ resource "aws_security_group_rule" "control_plane_outbound" {
   to_port           = 65535
   protocol          = "-1"
   cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_flow_log" "this" {
+  vpc_id          = "${aws_vpc.this.id}"
+  iam_role_arn    = "<iam_role_arn>"
+  log_destination = "${aws_s3_bucket.this.arn}"
+  traffic_type    = "ALL"
+
+  tags = {
+    GeneratedBy      = "Accurics"
+    ParentResourceId = "aws_vpc.this"
+  }
+}
+resource "aws_s3_bucket" "this" {
+  bucket        = "this_flow_log_s3_bucket"
+  acl           = "private"
+  force_destroy = true
+
+  versioning {
+    enabled    = true
+    mfa_delete = true
+  }
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+}
+resource "aws_s3_bucket_policy" "this" {
+  bucket = "${aws_s3_bucket.this.id}"
+
+  policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "this-restrict-access-to-users-or-roles",
+      "Effect": "Allow",
+      "Principal": [
+        {
+          "AWS": [
+            <principal_arn>
+          ]
+        }
+      ],
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${aws_s3_bucket.this.id}/*"
+    }
+  ]
+}
+POLICY
+}
+resource "aws_nat_gateway" "main-newAz" {
+  allocation_id     = "<allocation-id-of-elastic-ip>"
+  connectivity_type = "public"
+  subnet_id         = "<public-subnet-id>"
+
+  tags = {
+    Name = "secureNatGwTenable"
+  }
 }
